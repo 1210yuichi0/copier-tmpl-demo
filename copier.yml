@@ -1,0 +1,26 @@
+_min_copier_version: "9.0.0"
+_subdirectory: "template"
+_templates_suffix: ".jinja"
+
+project_name:
+  type: str
+  help: "プロジェクト名を入力してください"
+
+author:
+  type: str
+  help: "作者名"
+  default: "yada"
+
+use_docker:
+  type: bool
+  help: "Dockerfileを生成しますか？"
+  default: true
+
+python_version:
+  type: str
+  help: "Pythonバージョン"
+  default: "3.12"
+  choices:
+    - "3.11"
+    - "3.12"
+    - "3.13"

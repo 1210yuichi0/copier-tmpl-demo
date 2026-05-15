@@ -1,0 +1,8 @@
+FROM python:{{ python_version }}-slim
+
+WORKDIR /app
+COPY . .
+
+RUN pip install -e .
+
+CMD ["python", "-m", "{{ project_name }}"]
