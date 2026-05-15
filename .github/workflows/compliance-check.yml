@@ -5,6 +5,10 @@ on:
     - cron: "0 1 * * 1" # 毎週月曜 10:00 JST
   workflow_dispatch: # 手動実行可能
 
+permissions:
+  contents: read
+  issues: write
+
 jobs:
   check-compliance:
     runs-on: ubuntu-latest
@@ -25,27 +29,26 @@ jobs:
       - name: Check downstream repos
         id: compliance
         env:
-          GH_TOKEN: ${{ secrets.DOWNSTREAM_PAT }}
+          GH_TOKEN: ${{ secrets.DOWNSTREAM_PAT || secrets.GITHUB_TOKEN }}
+        shell: bash
         run: |
-          # downstream-repos.json から読み込み
-          readarray -t REPOS < <(jq -r '.repos[]' .github/downstream-repos.json)
-
           LATEST="${{ steps.latest.outputs.version }}"
-          REPORT="## Template Compliance Report\n\n"
-          REPORT+="| Repo | Current Version | Latest | Status |\n"
-          REPORT+="|------|----------------|--------|--------|\n"
+          REPORT="## Template Compliance Report"$'\n\n'
+          REPORT+="| Repo | Current Version | Latest | Status |"$'\n'
+          REPORT+="|------|----------------|--------|--------|"$'\n'
 
           ALL_COMPLIANT=true
           OUTDATED_COUNT=0
-          TOTAL_COUNT=${#REPOS[@]}
+          TOTAL_COUNT=0
 
-          for repo in "${REPOS[@]}"; do
-            # .copier-answers.yml を GitHub API で取得
+          while IFS= read -r repo; do
+            TOTAL_COUNT=$((TOTAL_COUNT + 1))
+
             content=$(gh api "repos/$repo/contents/.copier-answers.yml" \
-              --jq '.content' 2>/dev/null | base64 -d 2>/dev/null || echo "")
+              --jq '.content' 2>/dev/null | base64 -d 2>/dev/null) || content=""
 
             if [ -z "$content" ]; then
-              REPORT+="| \`$repo\` | ❌ Not found | $LATEST | ⚠️ Missing |\n"
+              REPORT+="| \`$repo\` | N/A | $LATEST | ⚠️ Missing or no access |"$'\n'
               ALL_COMPLIANT=false
               OUTDATED_COUNT=$((OUTDATED_COUNT + 1))
               continue
@@ -54,26 +57,24 @@ jobs:
             current=$(echo "$content" | grep '_commit:' | awk '{print $2}')
 
             if [ "$current" = "$LATEST" ]; then
-              REPORT+="| \`$repo\` | $current | $LATEST | ✅ Up to date |\n"
+              REPORT+="| \`$repo\` | $current | $LATEST | ✅ Up to date |"$'\n'
             else
-              REPORT+="| \`$repo\` | $current | $LATEST | 🔄 Outdated |\n"
+              REPORT+="| \`$repo\` | $current | $LATEST | 🔄 Outdated |"$'\n'
               ALL_COMPLIANT=false
               OUTDATED_COUNT=$((OUTDATED_COUNT + 1))
             fi
-          done
+          done < <(jq -r '.repos[]' .github/downstream-repos.json)
 
-          REPORT+="\n### Summary\n"
-          REPORT+="- Total repos: $TOTAL_COUNT\n"
-          REPORT+="- Up to date: $((TOTAL_COUNT - OUTDATED_COUNT))\n"
-          REPORT+="- Outdated: $OUTDATED_COUNT\n"
-          REPORT+="- Template: \`$TEMPLATE_REPO\` @ \`$LATEST\`\n"
-          REPORT+="- Checked: $(date -u '+%Y-%m-%d %H:%M UTC')\n"
+          REPORT+=$'\n'"### Summary"$'\n'
+          REPORT+="- Total repos: $TOTAL_COUNT"$'\n'
+          REPORT+="- Up to date: $((TOTAL_COUNT - OUTDATED_COUNT))"$'\n'
+          REPORT+="- Outdated: $OUTDATED_COUNT"$'\n'
+          REPORT+="- Template: \`$TEMPLATE_REPO\` @ \`$LATEST\`"$'\n'
+          REPORT+="- Checked: $(date -u '+%Y-%m-%d %H:%M UTC')"$'\n'
 
-          # レポートをファイルに書き出し
-          echo -e "$REPORT" > compliance-report.md
+          echo "$REPORT" > compliance-report.md
           cat compliance-report.md
 
-          # Step outputs
           echo "all_compliant=$ALL_COMPLIANT" >> "$GITHUB_OUTPUT"
           echo "outdated_count=$OUTDATED_COUNT" >> "$GITHUB_OUTPUT"
 
@@ -82,12 +83,10 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # 既存の compliance issue を探す
           existing=$(gh issue list --label "template-compliance" --state open --json number --jq '.[0].number' 2>/dev/null || echo "")
-
           body=$(cat compliance-report.md)
 
-          if [ -n "$existing" ]; then
+          if [ -n "$existing" ] && [ "$existing" != "null" ]; then
             gh issue edit "$existing" --body "$body"
             echo "Updated existing issue #$existing"
           else
@@ -104,7 +103,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           existing=$(gh issue list --label "template-compliance" --state open --json number --jq '.[0].number' 2>/dev/null || echo "")
-          if [ -n "$existing" ]; then
+          if [ -n "$existing" ] && [ "$existing" != "null" ]; then
             gh issue close "$existing" --comment "✅ All downstream repos are now up to date."
             echo "Closed compliance issue #$existing"
           fi
