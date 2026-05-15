@@ -9,7 +9,7 @@ project_name:
 author:
   type: str
   help: "作者名"
-  default: "yada"
+  default: "your-name"
 
 use_docker:
   type: bool
