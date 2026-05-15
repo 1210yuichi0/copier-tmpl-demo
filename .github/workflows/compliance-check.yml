@@ -1,0 +1,119 @@
+name: Template compliance check
+
+on:
+  schedule:
+    - cron: "0 1 * * 1" # 毎週月曜 10:00 JST
+  workflow_dispatch: # 手動実行可能
+
+jobs:
+  check-compliance:
+    runs-on: ubuntu-latest
+    env:
+      TEMPLATE_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get latest template version
+        id: latest
+        run: |
+          latest=$(git tag --sort=-v:refname | head -1)
+          echo "version=$latest" >> "$GITHUB_OUTPUT"
+          echo "Latest template version: $latest"
+
+      - name: Check downstream repos
+        id: compliance
+        env:
+          GH_TOKEN: ${{ secrets.DOWNSTREAM_PAT }}
+        run: |
+          # downstream-repos.json から読み込み
+          readarray -t REPOS < <(jq -r '.repos[]' .github/downstream-repos.json)
+
+          LATEST="${{ steps.latest.outputs.version }}"
+          REPORT="## Template Compliance Report\n\n"
+          REPORT+="| Repo | Current Version | Latest | Status |\n"
+          REPORT+="|------|----------------|--------|--------|\n"
+
+          ALL_COMPLIANT=true
+          OUTDATED_COUNT=0
+          TOTAL_COUNT=${#REPOS[@]}
+
+          for repo in "${REPOS[@]}"; do
+            # .copier-answers.yml を GitHub API で取得
+            content=$(gh api "repos/$repo/contents/.copier-answers.yml" \
+              --jq '.content' 2>/dev/null | base64 -d 2>/dev/null || echo "")
+
+            if [ -z "$content" ]; then
+              REPORT+="| \`$repo\` | ❌ Not found | $LATEST | ⚠️ Missing |\n"
+              ALL_COMPLIANT=false
+              OUTDATED_COUNT=$((OUTDATED_COUNT + 1))
+              continue
+            fi
+
+            current=$(echo "$content" | grep '_commit:' | awk '{print $2}')
+
+            if [ "$current" = "$LATEST" ]; then
+              REPORT+="| \`$repo\` | $current | $LATEST | ✅ Up to date |\n"
+            else
+              REPORT+="| \`$repo\` | $current | $LATEST | 🔄 Outdated |\n"
+              ALL_COMPLIANT=false
+              OUTDATED_COUNT=$((OUTDATED_COUNT + 1))
+            fi
+          done
+
+          REPORT+="\n### Summary\n"
+          REPORT+="- Total repos: $TOTAL_COUNT\n"
+          REPORT+="- Up to date: $((TOTAL_COUNT - OUTDATED_COUNT))\n"
+          REPORT+="- Outdated: $OUTDATED_COUNT\n"
+          REPORT+="- Template: \`$TEMPLATE_REPO\` @ \`$LATEST\`\n"
+          REPORT+="- Checked: $(date -u '+%Y-%m-%d %H:%M UTC')\n"
+
+          # レポートをファイルに書き出し
+          echo -e "$REPORT" > compliance-report.md
+          cat compliance-report.md
+
+          # Step outputs
+          echo "all_compliant=$ALL_COMPLIANT" >> "$GITHUB_OUTPUT"
+          echo "outdated_count=$OUTDATED_COUNT" >> "$GITHUB_OUTPUT"
+
+      - name: Create or update compliance issue
+        if: steps.compliance.outputs.all_compliant == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # 既存の compliance issue を探す
+          existing=$(gh issue list --label "template-compliance" --state open --json number --jq '.[0].number' 2>/dev/null || echo "")
+
+          body=$(cat compliance-report.md)
+
+          if [ -n "$existing" ]; then
+            gh issue edit "$existing" --body "$body"
+            echo "Updated existing issue #$existing"
+          else
+            gh issue create \
+              --title "⚠️ Template compliance: ${{ steps.compliance.outputs.outdated_count }} repo(s) outdated" \
+              --body "$body" \
+              --label "template-compliance"
+            echo "Created new compliance issue"
+          fi
+
+      - name: Close compliance issue if all compliant
+        if: steps.compliance.outputs.all_compliant == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          existing=$(gh issue list --label "template-compliance" --state open --json number --jq '.[0].number' 2>/dev/null || echo "")
+          if [ -n "$existing" ]; then
+            gh issue close "$existing" --comment "✅ All downstream repos are now up to date."
+            echo "Closed compliance issue #$existing"
+          fi
+
+      - name: Upload report artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: compliance-report
+          path: compliance-report.md
+
+      - name: Job summary
+        run: cat compliance-report.md >> "$GITHUB_STEP_SUMMARY"

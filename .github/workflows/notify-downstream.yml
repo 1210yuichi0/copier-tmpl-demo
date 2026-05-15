@@ -6,13 +6,24 @@ on:
       - "v*"
 
 jobs:
+  load-repos:
+    runs-on: ubuntu-latest
+    outputs:
+      repos: ${{ steps.load.outputs.repos }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Load downstream repo list
+        id: load
+        run: |
+          repos=$(jq -c '.repos' .github/downstream-repos.json)
+          echo "repos=$repos" >> "$GITHUB_OUTPUT"
+
   dispatch:
+    needs: load-repos
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        repo:
-          - yada_sansan/copier-proj-demo
-          # 下流リポをここに追加していく
+        repo: ${{ fromJson(needs.load-repos.outputs.repos) }}
     steps:
       - name: Send repository dispatch
         uses: peter-evans/repository-dispatch@v3
