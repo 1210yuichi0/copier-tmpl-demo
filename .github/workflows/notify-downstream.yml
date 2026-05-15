@@ -1,0 +1,23 @@
+name: Notify downstream repos on template release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        repo:
+          - yada_sansan/copier-proj-demo
+          # 下流リポをここに追加していく
+    steps:
+      - name: Send repository dispatch
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.DOWNSTREAM_PAT }}
+          repository: ${{ matrix.repo }}
+          event-type: template-updated
+          client-payload: '{"template_version": "${{ github.ref_name }}", "template_repo": "${{ github.repository }}"}'
