@@ -20,6 +20,47 @@ copier-tmpl-demo/
         └── compliance-check.yml         # 下流の準拠状況チェック
 ```
 
+## 段階的導入（Incremental Adoption）
+
+`adoption_phase` パラメータでテンプレート管理の対象範囲を制御できる。既存プロジェクトへの段階的導入が可能。
+
+| Phase | 管理対象 | ユースケース |
+|-------|---------|------------|
+| 1 | CI + README | まず CI を標準化 |
+| 2 | + pyproject.toml | ビルド設定も統一 |
+| 3 | + Dockerfile, .dockerignore | フル管理 |
+
+### 新規プロジェクト（Phase 1 から始める場合）
+
+```bash
+copier copy --defaults \
+  --data project_name=my-app \
+  --data author=your-name \
+  --data adoption_phase=1 \
+  gh:1210yuichi0/copier-tmpl-demo . --trust
+```
+
+### 既存プロジェクトへの導入
+
+```bash
+# 既存プロジェクトのルートで実行（Phase 1 = CI のみ）
+copier copy --defaults \
+  --data project_name=my-existing-app \
+  --data adoption_phase=1 \
+  gh:1210yuichi0/copier-tmpl-demo . --trust
+# → ci.yml と README のみ生成。既存の pyproject.toml 等には影響なし
+```
+
+### フェーズ昇格
+
+```bash
+# Phase 1 → 2 に昇格（pyproject.toml がテンプレート管理に）
+copier update --trust --defaults -d adoption_phase=2
+
+# Phase 2 → 3 に昇格（Docker もテンプレート管理に）
+copier update --trust --defaults -d adoption_phase=3
+```
+
 ## 導入手順
 
 ### 1. テンプレートからプロジェクトを生成
@@ -30,7 +71,7 @@ copier copy --defaults \
   --data author=your-name \
   --data use_docker=true \
   --data python_version=3.12 \
-  --vcs-ref v4.1.0 \
+  --data adoption_phase=3 \
   gh:1210yuichi0/copier-tmpl-demo . --trust
 ```
 
@@ -94,6 +135,9 @@ on:
 | v3.0.0 | GHA 自動化ワークフロー統合 |
 | v4.0.0 | `pyproject.toml` に dev 依存関係追加 |
 | v4.1.0 | `project.authors` の TOML 構文修正 |
+| v5.0.0 | テンプレートテスト CI 追加 |
+| v6.0.0 | セキュリティ強化（script injection 対策、jq -cn） |
+| v7.0.0 | `adoption_phase` 追加（段階的導入対応） |
 
 ### GHA 実動検証
 
@@ -113,6 +157,9 @@ on:
 4. **`GITHUB_TOKEN` では workflow ファイルを push できない** - `CR_PAT` が必要
 5. **cross-repo dispatch には PAT が必要** - `DOWNSTREAM_PAT` を設定
 6. **`project.authors` は TOML 配列テーブル** - `[[project.authors]]` が正しい構文
+7. **`_exclude` は出力ファイル名で評価される** - `Dockerfile.jinja` ではなく `Dockerfile` でマッチ
+8. **`copier copy` は最新タグを使う** - 未コミットの `_exclude` 変更は反映されない。`--vcs-ref HEAD` で回避可能
+9. **フェーズ昇格は手動で行う** - GHA 自動更新は `--skip-answered` なので `adoption_phase` は変わらない
 
 ## 参考
 

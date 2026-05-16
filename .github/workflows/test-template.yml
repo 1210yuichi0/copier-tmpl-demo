@@ -18,12 +18,23 @@ jobs:
           - name: "default"
             python_version: "3.12"
             use_docker: true
+            adoption_phase: 3
           - name: "py311-no-docker"
             python_version: "3.11"
             use_docker: false
+            adoption_phase: 3
           - name: "py313"
             python_version: "3.13"
             use_docker: true
+            adoption_phase: 3
+          - name: "phase1-ci-only"
+            python_version: "3.12"
+            use_docker: true
+            adoption_phase: 1
+          - name: "phase2-with-pyproject"
+            python_version: "3.12"
+            use_docker: true
+            adoption_phase: 2
 
     name: generate (${{ matrix.name }})
     steps:
@@ -44,6 +55,7 @@ jobs:
             --data author=ci-test \
             --data use_docker=${{ matrix.use_docker }} \
             --data python_version=${{ matrix.python_version }} \
+            --data adoption_phase=${{ matrix.adoption_phase }} \
             --vcs-ref HEAD \
             ${{ github.workspace }} . --trust
 
@@ -53,34 +65,45 @@ jobs:
           echo "=== Generated files ==="
           find . -not -path './.git/*' -not -path './.git' | sort
 
-          test -f pyproject.toml      || { echo "FAIL: pyproject.toml missing"; exit 1; }
           test -f README.md           || { echo "FAIL: README.md missing"; exit 1; }
           test -f .copier-answers.yml || { echo "FAIL: .copier-answers.yml missing"; exit 1; }
 
-          if [ "${{ matrix.use_docker }}" = "true" ]; then
-            test -f Dockerfile      || { echo "FAIL: Dockerfile missing (use_docker=true)"; exit 1; }
-            test -f .dockerignore   || { echo "FAIL: .dockerignore missing (use_docker=true)"; exit 1; }
+          PHASE=${{ matrix.adoption_phase }}
+
+          if [ "$PHASE" -ge 2 ]; then
+            test -f pyproject.toml    || { echo "FAIL: pyproject.toml missing (phase >= 2)"; exit 1; }
           else
-            test ! -f Dockerfile    || { echo "FAIL: Dockerfile exists (use_docker=false)"; exit 1; }
+            test ! -f pyproject.toml  || { echo "FAIL: pyproject.toml exists (phase 1)"; exit 1; }
+          fi
+
+          if [ "$PHASE" -ge 3 ] && [ "${{ matrix.use_docker }}" = "true" ]; then
+            test -f Dockerfile        || { echo "FAIL: Dockerfile missing (phase 3 + docker)"; exit 1; }
+            test -f .dockerignore     || { echo "FAIL: .dockerignore missing (phase 3 + docker)"; exit 1; }
+          else
+            test ! -f Dockerfile      || { echo "FAIL: Dockerfile exists (phase < 3 or no docker)"; exit 1; }
           fi
 
       - name: Validate pyproject.toml
+        if: matrix.adoption_phase >= 2
         run: |
           cd /tmp/test-project
           pip install validate-pyproject
           validate-pyproject pyproject.toml
 
       - name: Install generated project
+        if: matrix.adoption_phase >= 2
         run: |
           cd /tmp/test-project
           pip install -e ".[dev]"
 
       - name: Run linter
+        if: matrix.adoption_phase >= 2
         run: |
           cd /tmp/test-project
           ruff check .
 
       - name: Run tests
+        if: matrix.adoption_phase >= 2
         run: |
           cd /tmp/test-project
           pytest --no-header -rN || test $? -eq 5
