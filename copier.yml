@@ -3,10 +3,12 @@ _subdirectory: "template"
 _templates_suffix: ".jinja"
 _exclude:
   - "{% if not use_docker %}Dockerfile{% endif %}"
+  - "{% if not use_docker %}.dockerignore{% endif %}"
 
 project_name:
   type: str
   help: "プロジェクト名を入力してください"
+  validator: "{% if not project_name | regex_search('^[a-z][a-z0-9_-]*$') %}プロジェクト名は小文字英数字・ハイフン・アンダースコアのみ使用可能です{% endif %}"
 
 author:
   type: str

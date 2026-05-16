@@ -5,6 +5,9 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   generate:
     runs-on: ubuntu-latest
@@ -31,7 +34,7 @@ jobs:
           python-version: ${{ matrix.python_version }}
 
       - name: Install Copier
-        run: pip install copier
+        run: pip install "copier>=9,<10"
 
       - name: Generate project from template
         run: |
@@ -55,9 +58,10 @@ jobs:
           test -f .copier-answers.yml || { echo "FAIL: .copier-answers.yml missing"; exit 1; }
 
           if [ "${{ matrix.use_docker }}" = "true" ]; then
-            test -f Dockerfile || { echo "FAIL: Dockerfile missing (use_docker=true)"; exit 1; }
+            test -f Dockerfile      || { echo "FAIL: Dockerfile missing (use_docker=true)"; exit 1; }
+            test -f .dockerignore   || { echo "FAIL: .dockerignore missing (use_docker=true)"; exit 1; }
           else
-            test ! -f Dockerfile || { echo "FAIL: Dockerfile exists (use_docker=false)"; exit 1; }
+            test ! -f Dockerfile    || { echo "FAIL: Dockerfile exists (use_docker=false)"; exit 1; }
           fi
 
       - name: Validate pyproject.toml
@@ -74,7 +78,7 @@ jobs:
       - name: Run linter
         run: |
           cd /tmp/test-project
-          ruff check . || true
+          ruff check .
 
       - name: Run tests
         run: |

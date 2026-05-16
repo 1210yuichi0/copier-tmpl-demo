@@ -5,6 +5,9 @@ on:
     tags:
       - "v*"
 
+permissions:
+  contents: read
+
 jobs:
   prepare:
     runs-on: ubuntu-latest
@@ -25,13 +28,18 @@ jobs:
 
       - name: Generate changelog from previous tag
         id: changelog
+        env:
+          CURRENT_TAG: ${{ github.ref_name }}
         run: |
-          CURRENT_TAG="${{ github.ref_name }}"
           PREV_TAG=$(git tag --sort=-v:refname | grep -v "^${CURRENT_TAG}$" | head -1)
           echo "prev_tag=${PREV_TAG:-none}" >> "$GITHUB_OUTPUT"
 
           if [ -n "$PREV_TAG" ]; then
+            TOTAL=$(git log --oneline "${PREV_TAG}..${CURRENT_TAG}" -- template/ copier.yml | wc -l)
             LOG=$(git log --pretty=format:"- %s" "${PREV_TAG}..${CURRENT_TAG}" -- template/ copier.yml | head -20)
+            if [ "$TOTAL" -gt 20 ]; then
+              LOG="${LOG}"$'\n'"- ... and $((TOTAL - 20)) more commits"
+            fi
           else
             LOG="(初回リリース)"
           fi
@@ -46,19 +54,30 @@ jobs:
     needs: prepare
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         repo: ${{ fromJson(needs.prepare.outputs.repos) }}
     steps:
+      - name: Build payload
+        id: payload
+        env:
+          TEMPLATE_VERSION: ${{ github.ref_name }}
+          TEMPLATE_REPO: ${{ github.repository }}
+          PREV_TAG: ${{ needs.prepare.outputs.prev_tag }}
+          CHANGELOG: ${{ needs.prepare.outputs.changelog }}
+        run: |
+          PAYLOAD=$(jq -n \
+            --arg ver "$TEMPLATE_VERSION" \
+            --arg repo "$TEMPLATE_REPO" \
+            --arg prev "$PREV_TAG" \
+            --arg log "$CHANGELOG" \
+            '{template_version: $ver, template_repo: $repo, prev_tag: $prev, changelog: $log}')
+          echo "json=$PAYLOAD" >> "$GITHUB_OUTPUT"
+
       - name: Send repository dispatch
         uses: peter-evans/repository-dispatch@v3
         with:
           token: ${{ secrets.DOWNSTREAM_PAT }}
           repository: ${{ matrix.repo }}
           event-type: template-updated
-          client-payload: >-
-            {
-              "template_version": "${{ github.ref_name }}",
-              "template_repo": "${{ github.repository }}",
-              "prev_tag": "${{ needs.prepare.outputs.prev_tag }}",
-              "changelog": ${{ toJson(needs.prepare.outputs.changelog) }}
-            }
+          client-payload: ${{ steps.payload.outputs.json }}
