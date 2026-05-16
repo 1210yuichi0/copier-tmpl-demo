@@ -14,4 +14,4 @@ jobs:
         with:
           python-version: "{{ python_version }}"
       - run: pip install -e ".[dev]"
-      - run: pytest
+      - run: pytest --no-header -rN || test $? -eq 5
