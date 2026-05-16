@@ -30,9 +30,9 @@ jobs:
         id: compliance
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          LATEST: ${{ steps.latest.outputs.version }}
         shell: bash
         run: |
-          LATEST="${{ steps.latest.outputs.version }}"
 
           pip install pyyaml -q
           REPORT="## Template Compliance Report"$'\n\n'

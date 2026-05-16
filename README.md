@@ -11,12 +11,14 @@ copier-tmpl-demo/
 │   ├── README.md.jinja
 │   ├── pyproject.toml.jinja
 │   ├── Dockerfile.jinja
+│   ├── .dockerignore.jinja
 │   ├── {{_copier_conf.answers_file}}.jinja   # copier update に必須
 │   └── .github/workflows/ci.yml.jinja
 └── .github/
     ├── downstream-repos.json            # 下流リポ一覧（一元管理）
     └── workflows/
         ├── notify-downstream.yml        # タグ push → 下流へ dispatch
+        ├── test-template.yml            # テンプレート生成の CI テスト
         └── compliance-check.yml         # 下流の準拠状況チェック
 ```
 
@@ -138,6 +140,7 @@ on:
 | v5.0.0 | テンプレートテスト CI 追加 |
 | v6.0.0 | セキュリティ強化（script injection 対策、jq -cn） |
 | v7.0.0 | `adoption_phase` 追加（段階的導入対応） |
+| v7.2.0 | `_exclude` に `default(3)` 追加（後方互換修正）、CI マトリクス拡充 |
 
 ### GHA 実動検証
 

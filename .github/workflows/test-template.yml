@@ -65,8 +65,9 @@ jobs:
           echo "=== Generated files ==="
           find . -not -path './.git/*' -not -path './.git' | sort
 
-          test -f README.md           || { echo "FAIL: README.md missing"; exit 1; }
-          test -f .copier-answers.yml || { echo "FAIL: .copier-answers.yml missing"; exit 1; }
+          test -f README.md                    || { echo "FAIL: README.md missing"; exit 1; }
+          test -f .copier-answers.yml            || { echo "FAIL: .copier-answers.yml missing"; exit 1; }
+          test -f .github/workflows/ci.yml       || { echo "FAIL: ci.yml missing"; exit 1; }
 
           PHASE=${{ matrix.adoption_phase }}
 
