@@ -3,5 +3,8 @@ name = "{{ project_name }}"
 version = "0.1.0"
 requires-python = ">={{ python_version }}"
 
+[project.optional-dependencies]
+dev = ["pytest", "ruff"]
+
 [project.authors]
 name = "{{ author }}"
